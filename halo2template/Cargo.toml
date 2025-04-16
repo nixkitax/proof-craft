@@ -1,0 +1,8 @@
+[package]
+name = "zkqip"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+halo2_proofs = "0.3"  # o la versione attuale
+rand_core = "0.6"     # utile per randomness
