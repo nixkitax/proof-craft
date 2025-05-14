@@ -1,10 +1,27 @@
 [package]
 name = "zkqip"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+
+[lib]
+name = "zkqip"
+path = "src/lib.rs"
+bench = false
+
+[[bin]]
+name = "zkqip"
+path = "src/main.rs"
 
 [dependencies]
-    halo2_proofs = "0.3"
-    num-bigint = "0.4"
-    num-traits = "0.2"
-    ff = "0.13"
+halo2_proofs = { git = "https://github.com/zcash/halo2.git", branch = "main" }
+halo2curves = "0.8.0"
+hex = "0.4"
+
+[dev-dependencies]
+criterion = "0.5.1"
+approx = "0.5"  
+
+[[bench]]
+name = "quant_bench"
+harness = false
+
