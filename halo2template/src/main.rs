@@ -6,14 +6,17 @@ use halo2_proofs::{
     dev::MockProver,
 };
 
-// Definiamo il circuito con due input privati a e b.
+// Define the circuit structure with two private inputs: a and b
 #[derive(Default)]
 struct MyCircuit {
-    a: Value<Fp>, // input privato a
-    b: Value<Fp>, // input privato b
+    a: Value<Fp>, // private input a
+    b: Value<Fp>, // private input b
 }
 
-// Configurazione delle colonne del circuito (3 colonne di Advice, 1 di Instance, 1 Selector).
+// Circuit configuration:
+// - 3 Advice columns for private and intermediate values
+// - 1 Instance column for public output
+// - 1 Selector to activate the gate
 #[derive(Clone)]
 struct MyConfig {
     col_a: Column<Advice>,
@@ -23,84 +26,94 @@ struct MyConfig {
     selector: Selector,
 }
 
-
+// Implement the circuit: define logic and constraints
 impl Circuit<Fp> for MyCircuit {
     type Config = MyConfig;
     type FloorPlanner = SimpleFloorPlanner;
 
+    // Create a circuit without witnesses (used during key generation)
     fn without_witnesses(&self) -> Self {
-        // Circuito senza testimoni (usato durante la key generation)
         MyCircuit {
             a: Value::unknown(),
             b: Value::unknown(),
         }
     }
 
+    // Configure the circuit: define columns and constraints
     fn configure(meta: &mut ConstraintSystem<Fp>) -> MyConfig {
-        // Definiamo le colonne
+        // Create columns
         let col_a = meta.advice_column();
         let col_b = meta.advice_column();
         let col_c = meta.advice_column();
         let instance = meta.instance_column();
         let selector = meta.selector();
 
-        // Abilitiamo la copia (equality) tra la colonna di output e l’istanza pubblica
+        // Enable equality for the output column and the public instance
         meta.enable_equality(col_c);
         meta.enable_equality(instance);
 
-        // Creiamo un vincolo: quando il selector è attivo, imponi a + b = c
+        // Create a gate: when selector is enabled, enforce a + b = c
         meta.create_gate("add", |meta| {
             let s = meta.query_selector(selector);
             let a = meta.query_advice(col_a, Rotation::cur());
             let b = meta.query_advice(col_b, Rotation::cur());
             let c = meta.query_advice(col_c, Rotation::cur());
-            vec![s * (a + b - c)] // vincolo: s*(a + b - c) = 0
+            vec![s * (a + b - c)] // constraint: s*(a + b - c) = 0
         });
 
         MyConfig { col_a, col_b, col_c, instance, selector }
     }
 
+    // Synthesize the circuit: assign values and enforce constraints
     fn synthesize(&self, config: MyConfig, mut layouter: impl Layouter<Fp>) -> Result<(), Error> {
-        // Assegna i valori di a, b, calcola c = a+b e impone i vincoli
+        // Compute c = a + b
         let c_val = self.a.clone().zip(self.b.clone()).map(|(a_val, b_val)| a_val + b_val);
         let mut cell_c = None;
+
         layouter.assign_region(
             || "witnesses",
             |mut region: Region<'_, Fp>| {
-                // Abilita il gate (selector) sulla riga 0
+                // Enable the gate (selector) on row 0
                 config.selector.enable(&mut region, 0)?;
-                // Assegna i valori privati a e b alla riga 0 delle rispettive colonne
+
+                // Assign private inputs a and b to row 0 of their respective columns
                 region.assign_advice(|| "a", config.col_a, 0, || self.a.clone())?;
                 region.assign_advice(|| "b", config.col_b, 0, || self.b.clone())?;
-                // Assegna il valore c = a + b alla colonna c (riga 0)
+
+                // Assign the computed value c = a + b to column c (row 0)
                 let assigned_c = region.assign_advice(|| "c", config.col_c, 0, || c_val)?;
-                // Salva la cella di c per vincolarla all'output pubblico
+                // Save the cell of c to constrain it to the public output
                 cell_c = Some(assigned_c.cell());
                 Ok(())
             },
         )?;
-        // Vincola la cella c assegnata all'istanza pubblica (indice 0)
+
+        // Constrain the assigned cell c to the public instance (index 0)
         layouter.constrain_instance(cell_c.unwrap(), config.instance, 0)?;
         Ok(())
     }
 }
 
 fn main() {
-    // Il numero di righe del circuito non può superare 2^k. Usiamo k=4 (16 righe) per sicurezza&#8203;:contentReference[oaicite:0]{index=0}.
+    // Define the circuit row capacity (k=4 for 16 rows)
     let k = 4;
-    // Esempio di valori per i test (a e b privati, c pubblico atteso)
+
+    // Example values for testing (private a and b, expected public c)
     let a_val = Fp::from(5);
     let b_val = Fp::from(7);
     let c_val = a_val + b_val;
-    // Istanzia il circuito con gli input privati noti
+
+    // Instantiate the circuit with known private inputs
     let circuit = MyCircuit {
         a: Value::known(a_val),
         b: Value::known(b_val),
     };
-    // Prepara il vettore di input pubblici (qui solo c)
+
+    // Prepare public inputs (here only c)
     let public_inputs = vec![c_val];
-    // Esegui il circuito in un prover di test (MockProver) e verifica i vincoli
+
+    // Run the circuit with MockProver and verify constraints
     let prover = MockProver::run(k, &circuit, vec![public_inputs]).unwrap();
-    assert!(prover.verify().is_ok(), "Il circuito non soddisfa i vincoli!");
+    assert!(prover.verify().is_ok(), "Circuit does not satisfy constraints!");
     println!("Proof succeeded!");
 }
